@@ -1646,7 +1646,10 @@ fn build() -> Vec<CommandSpec> {
                 let caps = s.state.caption_selection.clone();
                 return crate::captions::delete(s, &caps, false);
             }
-            let sel = with_links(s, &clips_p(s, p));
+            let clips = clips_p(s, p);
+            // Ordinary Clear acts on the visible selection, including individual Alt selection.
+            // Explicit-ID callers retain their existing linked expansion.
+            let sel = if p.get("clips").is_some() || p.get("clip").is_some() { with_links(s, &clips) } else { clips };
             s.edit_sequence("Clear", |q, _, st| {
                 edit::delete_items(q, &sel);
                 st.selection.clear();
@@ -2586,13 +2589,14 @@ fn build() -> Vec<CommandSpec> {
                 None => place_one(s, p),
             }
         ),
-        cmd!("timeline.select", "Select Clips", [], None, r#"{"clips":[id],"transitions":[id]?,"add":bool,"toggle":bool}"#, has_seq, |s, p| {
+        cmd!("timeline.select", "Select Clips", [], None, r#"{"clips":[id],"transitions":[id]?,"add":bool,"toggle":bool,"linked":bool?}"#, has_seq, |s, p| {
             if let Some(ids) = p.get("transitions") {
                 return select_transitions(s, ids, bool_p(p, "add").unwrap_or(false), bool_p(p, "toggle").unwrap_or(false));
             }
             let clips: Vec<ClipId> =
                 p.get("clips").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_u64().map(ClipId)).collect()).unwrap_or_default();
-            let clips = with_links(s, &clips);
+            // Alt selection suppresses expansion without changing the global preference.
+            let clips = if bool_p(p, "linked") == Some(false) { clips } else { with_links(s, &clips) };
             // selecting clips leaves trim mode (Premiere: clip and edit point selections are exclusive)
             s.state.edit_points.clear();
             s.state.trim_shift = Default::default();

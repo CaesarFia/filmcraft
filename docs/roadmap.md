@@ -1,6 +1,6 @@
 # Roadmap detail
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (new file: milestones moved from ROADMAP.md, Current focus rewritten from the 2026-10-10 re-measure, beta milestones added) · **Target:** Adobe Premiere Pro 2026 (26.5.2)
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (shared Windows installer UI; existing folder/shortcut/launch options retained; install and uninstall completion) · **Target:** Adobe Premiere Pro 2026 (26.5.2)
 
 Forward-looking plan: milestones with status, the current focus and what's next, with estimates in
 Opus 5.5 agent-hours (calibration in [target-app-parity.md](target-app-parity.md#calibration)).
@@ -89,3 +89,19 @@ the web app shell ([G20](gaps.md#g20-the-web-app-shell)).
 |---|---|---|
 | 2026-10-10 | minor | Alpha gate table added (craftrules core-workflow gate): six core workflows, all pass on macOS; stage stays alpha |
 | 2026-10-10 | major | Created: milestone table moved from ROADMAP.md (M5 and M9 remaining work updated), HW and L10N rows, beta milestones B1–B7, Current focus from the re-measure |
+
+## Packaging update — 2026-10-10
+
+Windows setup now uses the shared `craft-installer` native UI source, with install/repair/remove
+completion, cancellation and failure screens. Existing MSI ownership and upgrade identities are
+preserved; unattended modes remain unattended. Source/generator checks pass; native Windows
+installer acceptance is still pending. See [setup validation](../packaging/windows/README.md).
+
+## Packaging update (2026-10-11)
+
+Windows setup now uses the suite's shared `craft-installer` UI, preserving existing folder,
+shortcut and launch options and app-owned installation policy. Install, uninstall and repair
+have explicit completion screens; cancellation and failure have separate endings. Source/profile
+checks, WiX UI library compilation for x64/x86/ARM64, PowerShell parsing and package identity
+comparisons pass. Full MSI linking and interactive Windows acceptance remain pending; see
+[Windows packaging](../packaging/windows/README.md).

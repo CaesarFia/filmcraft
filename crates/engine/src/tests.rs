@@ -122,6 +122,38 @@ fn source_insert_three_point() {
 }
 
 #[test]
+fn individual_selection_and_clear_preserve_unselected_linked_audio() {
+    let mut s = demo();
+    let video = s.active_sequence().unwrap().video_tracks[0].items[0].clone();
+    let audio = s.active_sequence().unwrap().audio_tracks.iter().flat_map(|tr| &tr.items).find(|i| i.link == video.link).unwrap().id;
+    assert!(s.state.linked_selection);
+    s.execute("timeline.select", json!({"clips": [video.id.0]})).unwrap();
+    assert!(s.state.selection.contains(&video.id) && s.state.selection.contains(&audio), "omitted linked preserves the default");
+    s.execute("timeline.select", json!({"clips": [video.id.0], "linked": false})).unwrap();
+    assert_eq!(s.state.selection, vec![video.id]);
+    assert!(s.state.linked_selection, "individual selection never changes the preference");
+    s.execute("edit.clear", json!({})).unwrap();
+    let seq = s.active_sequence().unwrap();
+    assert!(seq.find_item(video.id).is_none());
+    assert!(seq.find_item(audio).is_some(), "Clear deletes only selected clips");
+    assert!(s.state.linked_selection);
+
+    let mut s = demo();
+    let video = s.active_sequence().unwrap().video_tracks[0].items[0].clone();
+    let audio = s.active_sequence().unwrap().audio_tracks.iter().flat_map(|tr| &tr.items).find(|i| i.link == video.link).unwrap().id;
+    s.execute("sequence.linkedSelection", json!({"on": false})).unwrap();
+    s.execute("timeline.select", json!({"clips": [video.id.0]})).unwrap();
+    assert_eq!(s.state.selection, vec![video.id], "omitted linked retains the disabled preference");
+    assert!(!s.state.linked_selection);
+    s.execute("timeline.select", json!({"clips": [video.id.0], "linked": true})).unwrap();
+    assert_eq!(s.state.selection, vec![video.id], "linked true still respects the disabled preference");
+    s.execute("sequence.linkedSelection", json!({"on": true})).unwrap();
+    s.execute("edit.clear", json!({"clips": [video.id.0]})).unwrap();
+    let seq = s.active_sequence().unwrap();
+    assert!(seq.find_item(video.id).is_none() && seq.find_item(audio).is_none(), "explicit clip IDs retain linked expansion");
+}
+
+#[test]
 fn trim_linked_and_ripple_delete() {
     let mut s = demo();
     let first = s.active_sequence().unwrap().video_tracks[0].items[0].clone();

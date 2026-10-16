@@ -174,3 +174,10 @@ Ranked; detail and "done when" in [docs/roadmap.md](docs/roadmap.md) and [docs/g
 | 2026-10-10 | major | Restructured to the craftrules progress-docs shape: stage banner, headline numbers, dimension / feature / language tables, upcoming; re-measured against Premiere 26.5.2 (breadth ~87 → ~86%, ready ~50–60% → ~55%); honest assessment and scorecard moved to docs/target-app-parity.md, "Where we are lacking" to docs/gaps.md, milestones to docs/roadmap.md, interface localization to docs/localization-parity.md |
 | 2026-10-08 | minor | Log entries for HEVC export, Source playback and range dragging |
 | 2026-10-05 | major | Honest assessment added: checklist ~87% vs ready for real work ~50–60% |
+
+
+### Windows installer unification — release preparation, 2026-10-12
+
+The shared craft-installer UI preserves this revision's install options and provides persistent installation, repair and Windows Settings removal completion screens. Silent modes stay unattended. Earlier Windows acceptance is recorded in packaging/windows/README.md; normal CI and production-profile upgrade qualification against pinned current releases are in progress. No release or PR has been published.
+
+- **2026-10-15** · Individual clip selection and Clear preserve unselected linked audio. Ordinary selection and linked editing keep their existing behavior; regression tests cover isolated selection and deletion. No readiness percentage change.
