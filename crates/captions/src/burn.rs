@@ -105,6 +105,11 @@ fn vtt_overrides(settings: &str) -> (Option<f32>, Option<CaptionAlign>) {
 }
 
 /// Lay out and rasterise one caption for a `w`×`h` frame.
+///
+/// The overlay contains the background, text shadow, outline and fill, composited in
+/// that order. Style dimensions scale from a 1080-line frame. Invalid geometry or
+/// geometry exceeding the raster allocation limits returns `None`; these allocation
+/// limits are not a rendering-time guarantee.
 pub fn render_caption(c: &Caption, style: &CaptionStyle, w: usize, h: usize) -> Option<Overlay> {
     // Bound work before converting file-derived geometry or allocating raster masks.
     if w == 0
@@ -398,6 +403,7 @@ mod tests {
         assert!(track_overlay(&t, Tick(5), 100, 100).is_none());
     }
 
+    /// Composite a synthetic caption onto a transparent frame for pixel comparisons.
     fn canvas(style: &CaptionStyle, w: usize, h: usize) -> Vec<f32> {
         let o = render_caption(&cap("Shadow"), style, w, h).unwrap();
         let mut pixels = vec![0.0; w * h * 4];
@@ -405,6 +411,7 @@ mod tests {
         pixels
     }
 
+    /// Verify shadow colour and opacity at cardinal offsets across two frame sizes.
     #[test]
     fn shadow_color_opacity_direction_and_resolution() {
         let mut st = CaptionStyle {
@@ -448,6 +455,7 @@ mod tests {
         }
     }
 
+    /// Check spread, blur support and exact pixel identity for invisible shadows.
     #[test]
     fn shadow_spread_blur_and_disabled_identity() {
         let mut st = CaptionStyle {
@@ -484,6 +492,7 @@ mod tests {
         assert_eq!(render_caption(&c, &st, 960, 540), disabled);
     }
 
+    /// Reject non-finite geometry and bound extreme dimensions without panicking.
     #[test]
     fn hostile_shadow_geometry_is_bounded() {
         for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {

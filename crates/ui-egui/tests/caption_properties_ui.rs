@@ -90,6 +90,7 @@ fn properties_panel_edits_the_selected_caption() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Exercise shadow control ordering, enabling, opacity edits, undo and nested colour selection.
 #[test]
 fn caption_shadow_popup_edits_track_style_and_undoes() {
     let mut session = Session::default();

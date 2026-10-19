@@ -471,6 +471,8 @@ fn filmcraft_speech_available(app: &FilmcraftApp) -> bool {
     app.session.transcriber.is_some() || filmcraft_engine::transcript::speech_available()
 }
 
+/// Draw the shadow toggle and settings, queuing style commands for the selected track.
+/// Keep settings open independently of the nested RGB picker so colour edits can complete.
 fn shadow_popup(app: &mut FilmcraftApp, ui: &mut egui::Ui, tr: &filmcraft_project::CaptionTrack, actions: &mut Vec<(String, Value)>) {
     let st = &tr.style;
     let resp = ui.add(egui::Button::new(tl!("Shadow")).frame(false));
@@ -522,6 +524,8 @@ fn shadow_popup(app: &mut FilmcraftApp, ui: &mut egui::Ui, tr: &filmcraft_projec
     ui.ctx().data_mut(|d| d.insert_temp(open_id, open));
 }
 
+/// Draw the horizontally scrollable caption style row, ending with shadow controls.
+/// Queue edits for command dispatch after drawing; return if the track no longer exists.
 fn style_strip(app: &mut FilmcraftApp, ui: &mut egui::Ui, r: Rect, track_idx: usize, actions: &mut Vec<(String, Value)>) {
     let Some(tr) = app.session.active_sequence().and_then(|q| q.caption_tracks.get(track_idx)).cloned() else { return };
     let st = tr.style.clone();

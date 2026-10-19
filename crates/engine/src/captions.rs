@@ -177,6 +177,7 @@ fn caption_json(s: &Session, c: &filmcraft_project::Caption) -> Value {
     })
 }
 
+/// Serialize a caption track, its complete style and its cues for command responses.
 fn track_json(s: &Session, t: &CaptionTrack, index: usize) -> Value {
     json!({
         "id": t.id.0,
@@ -222,6 +223,8 @@ fn delta_p(s: &Session, p: &Value) -> Option<Tick> {
     p.get("deltaFrames").and_then(Value::as_i64).map(|f| s.sequence_rate().tick_of(f))
 }
 
+/// Register caption editing, navigation and styling commands with parameter documentation.
+/// Style changes are undoable session edits; invalid shadow parameters abort the edit.
 pub fn commands() -> Vec<CommandSpec> {
     vec![
         spec(

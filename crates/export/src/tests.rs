@@ -89,6 +89,7 @@ fn wav_png_gif() {
     assert!(std::path::Path::new(&tmp("seq005.png")).exists());
 }
 
+/// Compare exported caption-shadow pixels with the Program renderer, with burn-in on and off.
 #[test]
 fn caption_shadow_burn_in_matches_program_pixels() {
     let (p, seq, sources) = project();

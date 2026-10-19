@@ -10,6 +10,7 @@ fn demo() -> Session {
     s
 }
 
+/// Cover shadow persistence, legacy defaults, undo/redo and atomic parameter rejection.
 #[test]
 fn caption_shadow_command_roundtrip_undo_and_validation() {
     let mut s = demo();

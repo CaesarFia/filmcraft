@@ -107,6 +107,7 @@ pub struct CaptionStyle {
 }
 
 impl Default for CaptionStyle {
+    /// Preserve the standard caption appearance, with shadows disabled for new and legacy styles.
     fn default() -> Self {
         Self {
             font: "Inter".into(),
