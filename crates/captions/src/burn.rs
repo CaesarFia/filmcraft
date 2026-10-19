@@ -106,11 +106,18 @@ fn vtt_overrides(settings: &str) -> (Option<f32>, Option<CaptionAlign>) {
 
 /// Lay out and rasterise one caption for a `w`×`h` frame.
 pub fn render_caption(c: &Caption, style: &CaptionStyle, w: usize, h: usize) -> Option<Overlay> {
-    if w == 0 || h == 0 {
+    // Bound work before converting file-derived geometry or allocating raster masks.
+    if w == 0
+        || h == 0
+        || w > 16384
+        || h > 16384
+        || c.text.len() > 65536
+        || ![style.size, style.line_spacing, style.margin, style.outline].iter().all(|v| v.is_finite())
+    {
         return None;
     }
     let scale = h as f32 / 1080.0;
-    let px = (style.size * scale).max(4.0);
+    let px = (style.size.clamp(4.0, 400.0) * scale).max(4.0);
     let max_w = w as f32 * 0.9;
     let ts = caption_style(&style.font, px);
     let mut lines: Vec<String> = Vec::new();
@@ -124,7 +131,7 @@ pub fn render_caption(c: &Caption, style: &CaptionStyle, w: usize, h: usize) -> 
     }
     let vm = filmcraft_text::fonts::face(filmcraft_text::resolve(&ts.family, &ts.style).face).metrics(px);
     let (asc, desc) = (vm.ascent, vm.descent);
-    let lh = px * style.line_spacing.max(0.8);
+    let lh = px * style.line_spacing.clamp(0.8, 4.0);
     let pad_x = (px * 0.3).round();
     let block_h = lh * lines.len() as f32;
     let (line_override, align_override) = vtt_overrides(&c.settings);
@@ -148,15 +155,36 @@ pub fn render_caption(c: &Caption, style: &CaptionStyle, w: usize, h: usize) -> 
             CaptionAlign::Center => (w as f32 - lw) / 2.0,
         })
         .collect();
-    let outline = (style.outline * scale).max(0.0);
-    let grow = outline.ceil() + 1.0;
+    let outline = style.outline.clamp(0.0, 40.0) * scale;
+    let shadow_on = style.shadow && style.shadow_opacity > 0.0 && style.shadow_color[3] > 0;
+    let (dx, dy, spread, sigma) = if shadow_on {
+        if ![style.shadow_opacity, style.shadow_angle, style.shadow_distance, style.shadow_size, style.shadow_blur].iter().all(|v| v.is_finite()) {
+            return None;
+        }
+        let angle = (style.shadow_angle.rem_euclid(360.0) - 90.0).to_radians();
+        let distance = style.shadow_distance.clamp(0.0, 1000.0) * scale;
+        (angle.cos() * distance, angle.sin() * distance, style.shadow_size.clamp(0.0, 1000.0) * scale, style.shadow_blur.clamp(0.0, 1000.0) * scale / 3.0)
+    } else {
+        (0.0, 0.0, 0.0, 0.0)
+    };
+    // Three box passes have finite support of three radii, not just sigma. Include that
+    // padding and the offset so shadows are never cropped to the original text rectangle.
+    let blur_pad = if sigma >= 0.3 { 3.0 * (sigma * sigma + 1.0).sqrt().round().max(1.0) } else { 0.0 };
+    let grow = outline.ceil() + 1.0 + spread.ceil() + blur_pad + dx.abs().max(dy.abs()).ceil();
     let bx0 = xs.iter().zip(&widths).map(|(x, _)| x - pad_x - grow).fold(f32::MAX, f32::min).floor();
     let bx1 = xs.iter().zip(&widths).map(|(x, lw)| x + lw + pad_x + grow).fold(f32::MIN, f32::max).ceil();
     let by0 = (top - grow).floor();
     let by1 = (top + block_h + grow).ceil();
+    if ![bx0, bx1, by0, by1].iter().all(|v| v.is_finite() && v.abs() <= 131072.0) {
+        return None;
+    }
     let (ox, oy) = (bx0 as i32, by0 as i32);
     let ow = (bx1 - bx0).max(1.0) as usize;
     let oh = (by1 - by0).max(1.0) as usize;
+    let pixels = ow.checked_mul(oh)?;
+    if ow > 16384 || oh > 16384 || pixels > 4_194_304 {
+        return None;
+    }
     let mut cover = vec![0.0f32; ow * oh];
     let mut bg = vec![0.0f32; ow * oh];
     for (i, line) in lines.iter().enumerate() {
@@ -180,6 +208,17 @@ pub fn render_caption(c: &Caption, style: &CaptionStyle, w: usize, h: usize) -> 
         cover = m.a;
     }
     let stroke = if outline > 0.0 { dilate(&cover, ow, oh, outline) } else { Vec::new() };
+    let shadow = if shadow_on {
+        let mut mask = filmcraft_text::Mask { w: ow, h: oh, a: if stroke.is_empty() { cover.clone() } else { stroke.clone() } };
+        if spread > 0.0 {
+            mask = filmcraft_text::mask::stroke(&mask, spread, filmcraft_text::mask::StrokeKind::Outer);
+        }
+        mask = filmcraft_text::mask::blur(&mask, sigma);
+        Some(filmcraft_text::mask::offset(&mask, dx.round() as i32, dy.round() as i32))
+    } else {
+        None
+    };
+    let sc = lin(style.shadow_color).map(|v| v * (style.shadow_opacity / 100.0).clamp(0.0, 1.0));
     let (tc, bc, oc) = (lin(style.color), lin(style.background_color), lin(style.outline_color));
     let mut out = vec![0.0f32; ow * oh * 4];
     for j in 0..ow * oh {
@@ -192,6 +231,9 @@ pub fn render_caption(c: &Caption, style: &CaptionStyle, w: usize, h: usize) -> 
             }
         };
         over(&mut p, bc, bg[j]);
+        if let Some(mask) = &shadow {
+            over(&mut p, sc, mask.a.get(j).copied().unwrap_or(0.0).clamp(0.0, 1.0));
+        }
         if !stroke.is_empty() {
             over(&mut p, oc, stroke[j]);
         }
@@ -354,5 +396,102 @@ mod tests {
         assert!(track_overlay(&t, Tick(5), 100, 100).is_some());
         t.enabled = false;
         assert!(track_overlay(&t, Tick(5), 100, 100).is_none());
+    }
+
+    fn canvas(style: &CaptionStyle, w: usize, h: usize) -> Vec<f32> {
+        let o = render_caption(&cap("Shadow"), style, w, h).unwrap();
+        let mut pixels = vec![0.0; w * h * 4];
+        o.composite_onto(&mut pixels, w, h);
+        pixels
+    }
+
+    #[test]
+    fn shadow_color_opacity_direction_and_resolution() {
+        let mut st = CaptionStyle {
+            background: false,
+            anchor: CaptionAnchor::Middle,
+            shadow: true,
+            shadow_color: [255, 0, 0, 255],
+            shadow_opacity: 50.0,
+            shadow_angle: 90.0,
+            shadow_distance: 120.0,
+            shadow_size: 0.0,
+            shadow_blur: 0.0,
+            ..Default::default()
+        };
+        // A sharp, separated red shadow must be the text's coverage translated by a
+        // resolution-scaled distance, with half its alpha. Test both directions and scales.
+        for (w, h) in [(960, 540), (1920, 1080)] {
+            let distance = (120 * h / 1080) as isize;
+            for (angle, dx, dy) in [(90.0, distance, 0), (180.0, 0, distance), (270.0, -distance, 0), (0.0, 0, -distance)] {
+                st.shadow_angle = angle;
+                let shadowed = canvas(&st, w, h);
+                let plain = canvas(&CaptionStyle { shadow: false, ..st.clone() }, w, h);
+                let mut checked = 0;
+                for y in 0..h {
+                    for x in 0..w {
+                        let a = plain[(y * w + x) * 4 + 3];
+                        let (sx, sy) = (x as isize + dx, y as isize + dy);
+                        if a > 0.0 && sx >= 0 && sy >= 0 && sx < w as isize && sy < h as isize {
+                            let i = (sy as usize * w + sx as usize) * 4;
+                            if plain[i + 3] == 0.0 {
+                                assert!((shadowed[i] - a * 0.5).abs() < 0.001);
+                                assert_eq!(shadowed[i + 1], 0.0);
+                                assert!((shadowed[i + 3] - a * 0.5).abs() < 0.001);
+                                checked += 1;
+                            }
+                        }
+                    }
+                }
+                assert!(checked > 100);
+            }
+        }
+    }
+
+    #[test]
+    fn shadow_spread_blur_and_disabled_identity() {
+        let mut st = CaptionStyle {
+            background: false,
+            shadow: true,
+            shadow_distance: 100.0,
+            shadow_blur: 0.0,
+            shadow_opacity: 100.0,
+            shadow_color: [255, 0, 0, 255],
+            ..Default::default()
+        };
+        let c = cap("Test");
+        let sharp = render_caption(&c, &st, 960, 540).unwrap();
+        let red_mass = |o: &Overlay| o.px.chunks(4).map(|p| p[0] - p[1]).sum::<f32>();
+        st.shadow_size = 10.0;
+        let spread = render_caption(&c, &st, 960, 540).unwrap();
+        assert!(red_mass(&spread) > red_mass(&sharp));
+        st.shadow_blur = 30.0;
+        let soft = render_caption(&c, &st, 960, 540).unwrap();
+        assert!(soft.w > spread.w && soft.h > spread.h);
+        assert!(soft.px.chunks(4).any(|p| p[0] > 0.01 && p[0] < 0.5 && p[1] == 0.0));
+        // Full blur support is in the overlay, not clipped at its boundary.
+        for x in 0..soft.w {
+            assert!(soft.px[x * 4 + 3].abs() < 0.001);
+            assert!(soft.px[((soft.h - 1) * soft.w + x) * 4 + 3].abs() < 0.001);
+        }
+        st.shadow = false;
+        let disabled = render_caption(&c, &st, 960, 540);
+        st.shadow = true;
+        st.shadow_opacity = 0.0;
+        assert_eq!(render_caption(&c, &st, 960, 540), disabled);
+        st.shadow_opacity = 100.0;
+        st.shadow_color[3] = 0;
+        assert_eq!(render_caption(&c, &st, 960, 540), disabled);
+    }
+
+    #[test]
+    fn hostile_shadow_geometry_is_bounded() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let st = CaptionStyle { shadow: true, shadow_distance: bad, ..Default::default() };
+            assert!(std::panic::catch_unwind(|| render_caption(&cap("x"), &st, 640, 360)).unwrap().is_none());
+        }
+        let st = CaptionStyle { shadow: true, shadow_blur: f32::MAX, shadow_size: f32::MAX, ..Default::default() };
+        assert!(std::panic::catch_unwind(|| render_caption(&cap("x"), &st, 320, 180)).unwrap().is_some());
+        assert!(render_caption(&cap("x"), &st, usize::MAX, usize::MAX).is_none());
     }
 }
